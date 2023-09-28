@@ -4,50 +4,61 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.HashSet;
+import java.util.Set;
 
 public class Server {
+    private static final int PORT = 8080;
+    private static Set<PrintWriter> writers = new HashSet<>();
+
     public static void main(String[] args) throws IOException {
-        final int PORT = 8080;
-        ServerSocket server = new ServerSocket(PORT);
+        ServerSocket serverSocket = new ServerSocket(PORT);
+        System.out.println("Server is running on port " + PORT);
 
-        new Thread(() -> {
-            while (true) {
-                try {
-                    Socket socket = server.accept();
-                    UserThread user = new UserThread(socket);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-
-            }
-        }).start();
-
-    }
-
-    static class UserThread {
-        private Socket socket;
-        private String userName;
-        private BufferedReader br;
-        private PrintWriter pw;
-        public UserThread(Socket socket) throws IOException {
-            this.socket = socket;
-            this.br = new BufferedReader(new InputStreamReader(this.socket.getInputStream()));
-            this.pw = new PrintWriter(this.socket.getOutputStream(), true);
-            System.out.println("trying to read line?");
-
-            this.userName = this.br.readLine();
-            System.out.println(this.userName);
-
-            this.recieveThread(this.br, this.pw);
+        while (true) {
+            Socket clientSocket = serverSocket.accept();
+            System.out.println("New client connected");
+            new Thread(new ClientHandler(clientSocket)).start();
 
         }
+    }
 
-        private void recieveThread(BufferedReader br, PrintWriter pw) throws IOException {
-            String msg;
-            while (true) {
-                msg = br.readLine();
-                if (msg != null)
-                    System.out.println("msg " + msg);
+    private static class ClientHandler implements Runnable {
+        private Socket clientSocket;
+        private PrintWriter out;
+        private String username;
+
+        public ClientHandler(Socket socket) {
+            this.clientSocket = socket;
+        }
+
+        @Override
+        public void run() {
+            try {
+                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                out = new PrintWriter(clientSocket.getOutputStream(), true);
+                writers.add(out);
+
+                this.username = in.readLine();
+
+                String inputLine;
+                while ((inputLine = in.readLine()) != null) {
+                    System.out.println("User " + this.username + " says: " + inputLine);
+                    for (PrintWriter writer : writers) {
+                        writer.println(this.username + ": " + inputLine);
+                    }
+                }
+            } catch (IOException e) {
+                System.out.println("Client disconnected");
+            } finally {
+                if (out != null) {
+                    writers.remove(out);
+                }
+                try {
+                    clientSocket.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         }
     }
